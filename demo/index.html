@@ -1,40 +1,248 @@
-<!-- Javi Agenjo (@tamat) on 31/9/2011 -->
-<!DOCTYPE html>
-<html><head>
-    <title>LiteGraph</title>
-	<!--<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">-->
-	<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<html>
 
-    <link rel="stylesheet" type="text/css" href="../css/litegraph.css">
-    <link rel="stylesheet" type="text/css" href="../css/litegraph-editor.css">
-    <link rel="stylesheet" type="text/css" href="style.css">
-	</head>
-<body>
-	<div id="main">
-	</div>
+<head>
+  <link rel="stylesheet" type="text/css" href="../css/litegraph.css">
+  <link rel="stylesheet" type="text/css" href="../css/litegraph-editor.css">
 
-    <script type="text/javascript" src="../external/jquery-1.6.2.min.js"></script>
-    <script type="text/javascript" src="https://tamats.com/projects/sillyserver/src/sillyclient.js"></script>
-    <script type="text/javascript" src="js/libs/audiosynth.js"></script>
+  <script type="text/javascript" src="../src/litegraph.js"></script>
+  <script type="text/javascript" src="../src/litegraph-editor.js"></script>
+  <!--script type="text/javascript" src="../src/nodes/base.js"></script -->
 
-    <script type="text/javascript" src="../src/litegraph.js"></script>
-    <script type="text/javascript" src="../src/litegraph-editor.js"></script>
+</head>
 
-    <script type="text/javascript" src="../src/nodes/base.js"></script>
-    <script type="text/javascript" src="../src/nodes/logic.js"></script>
-    <script type="text/javascript" src="../src/nodes/events.js"></script>
-    <script type="text/javascript" src="../src/nodes/math.js"></script>
-    <script type="text/javascript" src="../src/nodes/math3d.js"></script>
-    <script type="text/javascript" src="../src/nodes/strings.js"></script>
-    <script type="text/javascript" src="../src/nodes/interface.js"></script>
-    <script type="text/javascript" src="../src/nodes/geometry.js"></script>
-    <script type="text/javascript" src="../src/nodes/input.js"></script>
-    <script type="text/javascript" src="../src/nodes/midi.js"></script>
-    <script type="text/javascript" src="../src/nodes/audio.js"></script>
-    <script type="text/javascript" src="../src/nodes/network.js"></script>
+<body style='width:100%; height:100%'>
+  <div>
+    <button onclick="load();">Load</button>
+    <button onclick="save();">Save</button>
+    <button onclick="graph.clear();">Clear</button>
+    <button onclick="graph.arrange();">Arrange</button>
+    <button onclick="resize_all();">Resize All</button>
+    <button onclick="collapse_all();">Collapse All</button>
+  </div>
+  <div>
+      <canvas id='mycanvas' width='1824' height='720' style='border: 1px solid'></canvas>
+  </div>
+  
+  <script>
+    
+    function save() {
+      var sgraph = graph.serialize();
+      window.localStorage.setItem('graph', JSON.stringify(sgraph));
+    }
+    
+    function load() {
+      var json_graph = window.localStorage.getItem('graph');
+      var loaded_graph = JSON.parse(json_graph);
+      graph.configure(  loaded_graph , false );
+    }
 
-    <script type="text/javascript" src="js/demos.js"></script>
-	<script type="text/javascript" src="js/code.js"></script>
+    function resize_all() {
+      for( const node of graph.getNodes() ) {
+        node.resize();
+      }
+    }
 
+    function collapse_all() {
+      for( const node of graph.getNodes() ) {
+        node.collapse();
+      }
+    }
+
+    function StepNode() {
+      this.addInput("1", "number");
+      this.addInput("2", "number");
+      this.addOutput("chunk", "number");
+      this.properties = { };
+      this.addProperty("classes", "", "string");
+//      var that = this;
+      this.slider = this.addWidget("slider", "Slider", 0.5, function (v) { }, { min: 0, max: 1 });
+      this.number = this.addWidget("number", "Number", 0.5, function (v) { }, { min: 0, max: 100 });
+      this.combo = this.addWidget("combo", "Combo", "red", function (v) { }, { values: ["red", "green", "blue"] });
+      this.text = this.addWidget("text", "Text", "edit me", function (v) { }, {});
+      this.toggle = this.addWidget("toggle", "Toggle", true, function (v) { }, { on: "enabled", off: "disabled" });
+      this.button = this.addWidget("button", "Button", null, function (v) { }, {});
+      this.size = this.computeSize();
+      this.serialize_widgets = true;
+    }
+
+    StepNode.title = "Step";
+    StepNode.prototype.onGetInputs = function() {
+        return [
+            ["chunk", "chunk"],
+        ];
+    };
+
+    LiteGraph.registerNodeType("workflow/step", StepNode);
+
+    function AddClipNode() {
+      this.addOutput("chunk", "chunk");
+      this.properties = { };
+      this.addProperty("classes", "", "string");
+      this.addProperty("noOfFrames", "", "number");
+      this.size = this.computeSize();
+      this.serialize_widgets = true;
+    }
+
+    AddClipNode.title = "AddClip";
+    LiteGraph.registerNodeType("workflow/addclip", AddClipNode);
+
+    function ExportClipNode() {
+      this.addInput("in", "chunk");
+      this.properties = { };
+      this.exporter = this.addWidget("text", "Exporter", "", function (v) { }, {});
+      this.path = this.addWidget("text", "Path", "", function (v) { }, {});
+      this.size = this.computeSize();
+      this.serialize_widgets = true;
+    }
+
+    ExportClipNode.title = "ExportClip";
+    LiteGraph.registerNodeType("workflow/exportclip", ExportClipNode);
+
+    function SplitByClassesNode() {
+      this.addInput("in", "chunk");
+      this.addOutput("chunk 1", "chunk");
+      this.addOutput("chunk 2", "chunk");
+      this.properties = { };
+      this.addProperty("classes", "", "string");
+      this.config = this.addWidget("text", "Config", "", 
+        function (v, that, node, pos, event, widget) { 
+          console.log(v, that, pos, event);
+          try {
+            var config = JSON.parse(v);
+            if( config ) {
+              var i = 0;
+              while( Object.keys(config) > node.outputs.length ) {
+                node.addOutput("foo", "chunk");
+              }
+              for( const key of Object.keys(config) ) {
+                node.outputs[i++].name = key;
+              }
+            } 
+            widget.error = undefined;
+          } catch(e) {
+            widget.error = e;
+            console.log("error after edit "+e);
+          }
+        }, 
+        { big: true, json: true });
+      this.size = this.computeSize();
+      this.serialize_widgets = true;
+    }
+
+    SplitByClassesNode.title = "Split by Classes";
+    SplitByClassesNode.prototype.onGetOutputs = function() {
+      const nextOutput = `chunk ${this.outputs.length+1}`;
+        return [
+            [nextOutput, "chunk"],
+        ];
+    };
+    
+    // getMenuOptions( node ) could be overridden
+    // getExtraMenuOptions dto, but only append options
+
+    LiteGraph.registerNodeType("workflow/splitbyclasses", SplitByClassesNode);
+
+    function SplitByMaxFrame() {
+      this.addInput("in", "chunk");
+      this.addOutput("split chunks", "chunk");
+      this.properties = { };
+      this.slider = this.addWidget("slider", "MaxFrame", 2, function () {},
+       { min: 1, max: 300, formatter: (w) => "max "+Number(w.value).toFixed(0)+" frames" });
+      this.size = this.computeSize();
+      this.serialize_widgets = true;
+    }
+
+    SplitByMaxFrame.title = "Split By MaxFrame";
+
+    LiteGraph.registerNodeType("workflow/splitbymaxframe", SplitByMaxFrame);
+
+    function SplitForInterpolate() {
+      this.addInput("in", "chunk");
+      this.addOutput("keyframe chunks", "chunk");
+      this.properties = { };
+      this.slider = this.addWidget("slider", "EveryFrame", 2, function () {}, 
+        { prec: 0, min: 2, max: 20, formatter: (w) => "every "+ Number(w.value).toFixed(0) + "th frame" });
+      this.size = this.computeSize();
+      this.serialize_widgets = true;
+    }
+
+    SplitForInterpolate.title = "Split For Interpolate";
+
+    LiteGraph.registerNodeType("workflow/SplitForInterpolate", SplitForInterpolate);
+
+    function ReviewWithSample() {
+      this.addInput("in", "chunk");
+      this.addOutput("review sample chunks", "chunk");
+      this.properties = { };
+      this.slider = this.addWidget("slider", "Precentage", 2, function () {}, 
+        { prec: 0, min: 2, max: 50, formatter: (w) => {
+          return Number(w.value).toFixed(0) + " %";
+        } });
+      this.size = this.computeSize();
+      this.serialize_widgets = true;
+    }
+
+    ReviewWithSample.title = "Sample for Review";
+
+    LiteGraph.registerNodeType("workflow/ReviewWithSample", ReviewWithSample);
+
+    function MergeNode() {
+      this.addInput("chunk 1", "chunk");
+      this.addOutput("chunks", "chunk");
+      this.properties = { };
+      this.size = this.computeSize();
+      this.serialize_widgets = true;
+    }
+    MergeNode.prototype.onGetInputs = function() {
+      const nextInput = `chunk ${this.inputs.length+1}`;
+        return [
+            [nextInput, "chunk"],
+        ];
+    };
+
+    MergeNode.title = "Merge";
+
+    LiteGraph.registerNodeType("workflow/MergeNode", MergeNode);
+
+    function ToolNode() {
+      this.addInput("in", "chunk");
+      this.addOutput("chunk", "chunk");
+      this.properties = { };
+      //this.addProperty("toolconfig", [1,2,3], "object");
+      this.text = this.addWidget("text", "Capabilities", "", function (v) { }, {});
+      this.text = this.addWidget("text", "Config", "", function (v) { }, {});
+      //this.addProperty("OP", "+", "enum", { values: ["+","-","*","/"] });
+
+      this.size = this.computeSize();
+      this.serialize_widgets = true;
+    }
+
+    ToolNode.title = "Tool";
+
+    LiteGraph.registerNodeType("workflow/ToolNode", ToolNode);
+
+
+    var graph = new LGraph();
+
+    var canvas = new LGraphCanvas("#mycanvas", graph);
+
+    var node_const = LiteGraph.createNode("workflow/addclip");
+    node_const.pos = [200, 200];
+    graph.add(node_const);
+    //node_const.setValue(4.5);
+
+    var node_watch = LiteGraph.createNode("workflow/splitbymaxframe");
+    node_watch.pos = [700, 200];
+    graph.add(node_watch);
+
+    node_const.connect(0, node_watch, 0);
+
+    graph.start()
+
+    function arrange() {
+      graph.arrange();
+    }
+  </script>
 </body>
+
 </html>

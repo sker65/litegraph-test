@@ -296,6 +296,9 @@
     min-width: 60px;
     min-height: 1.5em;
     padding-left: 10px;
+    color: white;
+    font-family: sans-serif;
+    vertical-align: top;
 }
 
 .graphdialog input,

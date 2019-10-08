@@ -8136,7 +8136,7 @@ LGraphNode.prototype.executeAction = function(action)
                         ctx.textAlign = "center";
                         ctx.fillStyle = text_color;
                         ctx.fillText(
-                            w.name + "  " + Number(w.value).toFixed(3),
+                            w.name + "  " + Number(w.value).toFixed(0),
                             width * 0.5,
                             y + H * 0.7
                         );
